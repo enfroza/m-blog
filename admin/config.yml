@@ -26,4 +26,15 @@ collections:
           label: "Image / File"
           name: "image"
           widget: "image"
-      - { label: "Body", name: "body", widget: "markdown" }
+      - label: "Body"
+        name: "body"
+        widget: "markdown"
+        hint: "Write your post. You can also paste raw HTML (ads, embeds, etc)."
+      - label: "Custom HTML / Ads"
+        name: "custom_html"
+        widget: "code"
+        default: ""
+        required: false
+        hint: "Paste AdSense code, script tags, or any HTML here. It will appear below the post content."
+        modes:
+          - html
