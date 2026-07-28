@@ -29,7 +29,7 @@ def slugify(text: str) -> str:
 
 
 def parse_frontmatter(raw: str) -> tuple:
-    """Simple frontmatter parser that also handles basic YAML lists."""
+    """Simple frontmatter parser supporting basic YAML lists and multiline blocks."""
     meta = {}
     body = raw
     if not raw.startswith("---"):
@@ -39,32 +39,70 @@ def parse_frontmatter(raw: str) -> tuple:
     if len(parts) < 3:
         return meta, body
 
-    fm = parts[1].strip()
+    fm = parts[1]
     body = parts[2].strip()
 
+    lines = fm.splitlines()
+    i = 0
     current_list_key = None
-    for line in fm.splitlines():
+    current_block_key = None
+    block_lines = []
+
+    while i < len(lines):
+        line = lines[i]
         stripped = line.strip()
+
+        # End of multiline block when indentation drops (or new key)
+        if current_block_key is not None:
+            # Continuation of block: empty line or indented/non-key line
+            if stripped == "" or (line.startswith(" ") or line.startswith("\t")) or (
+                ":" not in stripped and not stripped.startswith("- ")
+            ):
+                block_lines.append(line[1:] if line.startswith(" ") else line)
+                i += 1
+                continue
+            else:
+                meta[current_block_key] = "\n".join(block_lines).strip()
+                current_block_key = None
+                block_lines = []
+                # fall through to process this line as new key
+
         if not stripped:
+            current_list_key = None
+            i += 1
             continue
 
-        # List item: "  - value" or "  - /uploads/foo.jpg"
+        # List item
         if stripped.startswith("- ") and current_list_key:
             val = stripped[2:].strip().strip("'").strip('"')
             meta.setdefault(current_list_key, []).append(val)
+            i += 1
             continue
 
         if ":" in line:
             key, val = line.split(":", 1)
             key = key.strip()
-            val = val.strip().strip('"').strip("'")
+            val = val.strip()
 
-            if val == "" or val == "[]":
-                # Start of a list (or empty)
-                current_list_key = key
-                meta[key] = []
+            # Multiline block scalar
+            if val in ("|", ">", "|-", ">-", ""):
+                if val == "" and key in ("custom_html", "body"):
+                    # might be empty or start of list
+                    current_list_key = key
+                    meta[key] = []
+                    current_block_key = None
+                elif val in ("|", ">", "|-", ">-"):
+                    current_block_key = key
+                    block_lines = []
+                    current_list_key = None
+                else:
+                    current_list_key = key
+                    meta[key] = []
+                    current_block_key = None
             else:
                 current_list_key = None
+                current_block_key = None
+                val = val.strip('"').strip("'")
                 if val.lower() in ("true", "yes"):
                     val = True
                 elif val.lower() in ("false", "no"):
@@ -72,6 +110,11 @@ def parse_frontmatter(raw: str) -> tuple:
                 meta[key] = val
         else:
             current_list_key = None
+
+        i += 1
+
+    if current_block_key is not None:
+        meta[current_block_key] = "\n".join(block_lines).strip()
 
     return meta, body
 
@@ -116,6 +159,10 @@ def load_posts() -> list:
             extensions=[FencedCodeExtension(), TableExtension(), "nl2br"],
         )
 
+        custom_html = meta.get("custom_html", "") or ""
+        if isinstance(custom_html, list):
+            custom_html = "\n".join(str(x) for x in custom_html)
+
         posts.append({
             "title": title,
             "slug": slug,
@@ -123,6 +170,7 @@ def load_posts() -> list:
             "published": published,
             "media": media,
             "content_html": html_body,
+            "custom_html": str(custom_html).strip(),
             "excerpt": re.sub(r"<[^>]+>", "", html_body)[:180].strip(),
             "source": path.name,
         })
@@ -178,6 +226,10 @@ def build_post(post: dict):
                 parts.append(f'<p><a href="{src}" target="_blank" class="btn">View PDF</a></p>')
         media_html = f'<div class="post-media">{"".join(parts)}</div>'
 
+    custom = post.get("custom_html") or ""
+    if custom:
+        custom = f'<div class="post-custom-html">{custom}</div>'
+
     html = render(
         "post.html",
         title=f"{post['title']} — My Blog",
@@ -185,6 +237,7 @@ def build_post(post: dict):
         post_date=post["date"],
         post_media=media_html,
         post_content=post["content_html"],
+        post_custom_html=custom,
         year=str(datetime.now().year),
     )
     out_dir = DIST / "posts" / post["slug"]
