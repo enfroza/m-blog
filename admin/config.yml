@@ -1,0 +1,29 @@
+backend:
+  name: git-gateway
+  branch: main
+
+media_folder: static/uploads
+public_folder: /uploads
+
+collections:
+  - name: "posts"
+    label: "Blog Posts"
+    folder: "content/posts"
+    create: true
+    slug: "{{slug}}"
+    extension: "md"
+    fields:
+      - { label: "Title", name: "title", widget: "string" }
+      - { label: "Slug", name: "slug", widget: "string", required: false, hint: "Leave empty to auto-generate from title" }
+      - { label: "Publish Date", name: "date", widget: "datetime", format: "YYYY-MM-DD", date_format: "YYYY-MM-DD", time_format: false }
+      - { label: "Published", name: "published", widget: "boolean", default: true }
+      - label: "Media"
+        name: "media"
+        widget: "list"
+        required: false
+        summary: "{{fields.image}}"
+        field:
+          label: "Image / File"
+          name: "image"
+          widget: "image"
+      - { label: "Body", name: "body", widget: "markdown" }
